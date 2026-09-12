@@ -35,17 +35,11 @@ async function extractDetails(url) {
         const html = await _fetchPage(url);
         let description = '';
         
-        if (!html || html.length < 100) {
-            description = "Errore: la pagina non ha restituito contenuto valido. Forse un blocco di rete.";
-        } else if (html.includes("Cloudflare") || html.includes("Just a moment")) {
-            description = "ERRORE CLOUDFLARE: Il server ha bloccato la richiesta credendo che l'app sia un bot.";
-        } else {
-            const metaIdx = html.indexOf('<meta name=description');
-            if (metaIdx !== -1) {
-                const slice = html.slice(metaIdx, metaIdx + 400);
-                const m = slice.match(/content="([^"]+)"/);
-                if (m) description = m[1].replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
-            }
+        const metaIdx = html.indexOf('<meta name=description');
+        if (metaIdx !== -1) {
+            const slice = html.slice(metaIdx, metaIdx + 400);
+            const m = slice.match(/content="([^"]+)"/);
+            if (m) description = m[1].replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
         }
 
         return JSON.stringify([{ description, aliases: '', airdate: '' }]);
@@ -58,15 +52,7 @@ async function extractChapters(url) {
     try {
         const html = await _fetchPage(url);
         
-        // Debugging visivo per l'utente
-        if (!html || html.length < 100) {
-            return JSON.stringify([{ href: url, title: "ERRORE: HTML vuoto (" + (html ? html.length : 0) + " byte)", number: 1 }]);
-        }
-        if (html.includes("Cloudflare") || html.includes("Just a moment") || html.includes("cf-browser-verification")) {
-            return JSON.stringify([{ href: url, title: "ERRORE: Blocco Anti-Bot Cloudflare", number: 1 }]);
-        }
-
-        // Il codice corretto per leggere dal JSON inline di MangaWorld (ripristinato)
+        // Struttura reale di MangaWorld (JSON inline)
         const urlParts = url.replace('https://www.mangaworld.mx/manga/', '').split('/');
         const mangaId = urlParts[0];
         const mangaSlug = urlParts[1];
@@ -89,10 +75,9 @@ async function extractChapters(url) {
                 chapters.push({ href, title: name, number });
             }
         }
-        
+
         if (chapters.length === 0) {
-            // Se non trova i capitoli nel JSON, mostra la lunghezza dell'HTML per capire se la pagina è diversa
-            return JSON.stringify([{ href: url, title: "DEBUG: Nessun capitolo trovato. HTML length: " + html.length, number: 1 }]);
+            return JSON.stringify([{ href: url, title: "Errore: nessun capitolo trovato nell'HTML.", number: 1 }]);
         }
 
         chapters.sort(function(a, b) { return a.number - b.number; });
@@ -103,8 +88,58 @@ async function extractChapters(url) {
     }
 }
 
+// TRAPPOLA PER LA CACHE: Se l'app crede di essere un video player, chiamerà extractEpisodes!
+async function extractEpisodes(url) {
+    return JSON.stringify([{
+        id: "error_cache",
+        title: "❌ ERRORE: CACHE DELL'APP. Rimuovi modulo e usa il nuovo link mangita.json!",
+        number: 1
+    }]);
+}
+
+async function extractStreamUrl(url) {
+    return "error";
+}
+// FINE TRAPPOLA
+
 async function extractText(url) {
-    return 'Questo è un capitolo di test. Se vedi questo, il problema è risolto!';
+    try {
+        const response = await soraFetch(url);
+        const html = await response.text();
+
+        const chapIdMatch = html.match(/"_id":"([a-f0-9]{24})"/);
+        if (chapIdMatch) {
+            const chapId = chapIdMatch[1];
+            const pagesStr = html.match(/"pages":\[([^\]]+)\]/);
+            if (pagesStr) {
+                try {
+                    const pages = JSON.parse('[' + pagesStr[1] + ']');
+                    const base = `https://cdn.mangaworld.mx/chapters/${chapId}/`;
+                    return pages.map(function(p) { return "<img src='" + base + p + "' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>"; }).join('<br/>');
+                } catch (_) {}
+            }
+        }
+
+        // Fallback
+        const imgIdx = html.indexOf('cdn.mangaworld.mx/chapters/');
+        if (imgIdx !== -1) {
+            const imgSlice = html.slice(Math.max(0, html.lastIndexOf('<img', imgIdx)), imgIdx + 300);
+            const srcM = imgSlice.match(/src=(?:'|")?(\bhttps:\/\/cdn\.mangaworld\.mx\/chapters\/[^"' >]+)/);
+            if (srcM) {
+                const base = srcM[1].slice(0, srcM[1].lastIndexOf('/') + 1);
+                const pSlice = html.match(/"pages":\[([^\]]+)\]/);
+                if (pSlice) {
+                    try {
+                        const pages = JSON.parse('[' + pSlice[1] + ']');
+                        return pages.map(function(p) { return "<img src='" + base + p + "' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>"; }).join('<br/>');
+                    } catch (_) {}
+                }
+            }
+        }
+        return 'Errore estrazione contenuto.';
+    } catch (e) {
+        return 'Errore estrazione contenuto.';
+    }
 }
 
 async function soraFetch(url, options = { headers: {}, method: 'GET', body: null }) {
