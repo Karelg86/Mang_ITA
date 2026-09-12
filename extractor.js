@@ -155,3 +155,27 @@ async function soraFetch(url, options = { headers: {}, method: 'GET', body: null
         }
     }
 }
+
+// NUOVO CONTRATTO MANGA
+async function extractImages(url) {
+    try {
+        const response = await soraFetch(url);
+        const html = await response.text();
+
+        const chapIdMatch = html.match(/"_id":"([a-f0-9]{24})"/);
+        if (chapIdMatch) {
+            const chapId = chapIdMatch[1];
+            const pagesStr = html.match(/"pages":\[([^\]]+)\]/);
+            if (pagesStr) {
+                try {
+                    const pages = JSON.parse('[' + pagesStr[1] + ']');
+                    const base = https://cdn.mangaworld.mx/chapters/ + chapId + /;
+                    return JSON.stringify(pages.map(p => base + p));
+                } catch (_) {}
+            }
+        }
+        return JSON.stringify([]);
+    } catch (e) {
+        return JSON.stringify([]);
+    }
+}

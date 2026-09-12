@@ -1,0 +1,20 @@
+{
+  "sourceName": "MangaWorld IT (Manga)",
+  "iconUrl": "https://www.mangaworld.mx/favicon.ico",
+  "author": {
+    "name": "Karelg86",
+    "icon": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRQPQ1qIiALbM3xDWGsuJzu6ItaQGwb9ICRRw&s",
+    "url": "https://github.com/Karelg86"
+  },
+  "version": "1.0.0",
+  "language": "Italian",
+  "streamType": "mangas",
+  "quality": "Alta",
+  "baseUrl": "https://www.mangaworld.mx/",
+  "searchBaseUrl": "https://www.mangaworld.mx/archive?keyword=%s",
+  "scriptUrl": "https://raw.githubusercontent.com/Karelg86/Mang_ITA/master/extractor.js",
+  "type": "mangas",
+  "asyncJS": true,
+  "novel": true,
+  "downloadSupport": false
+}
