@@ -9,7 +9,8 @@ async function _fetchPage(url) {
     return text;
 }
 
-async function searchResults(keyword) {
+// FORMATO MANGA KANZEN
+async function searchResults(keyword, page = 0) {
     try {
         const response = await soraFetch(`https://www.mangaworld.mx/archive?keyword=${encodeURIComponent(keyword)}`);
         const html = await response.text();
@@ -18,15 +19,16 @@ async function searchResults(keyword) {
         let match;
         const seen = new Set();
         while ((match = regex.exec(html)) !== null) {
-            const href = match[1].trim();
-            if (!seen.has(href)) {
-                seen.add(href);
-                results.push({ title: match[2].trim(), href, image: match[3].trim() });
+            const id = match[1].trim();
+            if (!seen.has(id)) {
+                seen.add(id);
+                // ATTENZIONE: per i manga usa 'id' e 'imageURL' invece di 'href' e 'image'
+                results.push({ id: id, title: match[2].trim(), imageURL: match[3].trim() });
             }
         }
-        return JSON.stringify(results);
+        return results; // NON usare JSON.stringify, l'app aspetta un array nativo
     } catch (e) {
-        return JSON.stringify([]);
+        return [];
     }
 }
 
@@ -34,79 +36,65 @@ async function extractDetails(url) {
     try {
         const html = await _fetchPage(url);
         let description = '';
-        
         const metaIdx = html.indexOf('<meta name=description');
         if (metaIdx !== -1) {
             const slice = html.slice(metaIdx, metaIdx + 400);
             const m = slice.match(/content="([^"]+)"/);
             if (m) description = m[1].replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
         }
-
-        return JSON.stringify([{ description, aliases: '', airdate: '' }]);
+        // Ritorna un oggetto nativo con 'description' e 'tags'
+        return { description: description || 'Nessuna trama disponibile', tags: [] };
     } catch (e) {
-        return JSON.stringify([{ description: 'Exception: ' + e.message, aliases: '', airdate: '' }]);
+        return { description: 'Errore estrazione dettagli', tags: [] };
     }
 }
 
 async function extractChapters(url) {
     try {
         const html = await _fetchPage(url);
-        
-        // Struttura reale di MangaWorld (JSON inline)
         const urlParts = url.replace('https://www.mangaworld.mx/manga/', '').split('/');
         const mangaId = urlParts[0];
         const mangaSlug = urlParts[1];
 
         const chapters = [];
         const seen = new Set();
-        
         const chapRegex = /"name":"([^"]+)","volume":\{[^}]+\}[^}]*"slugFolder":"([^"]+)","title":[^,]+,"totViews":\d+[^}]*"id":"([^"]+)"/g;
         let match;
 
         while ((match = chapRegex.exec(html)) !== null) {
             const name = match[1];
             const slugFolder = match[2];
-            const href = `https://www.mangaworld.mx/manga/${mangaId}/${mangaSlug}/${slugFolder}`;
+            const id = `https://www.mangaworld.mx/manga/${mangaId}/${mangaSlug}/${slugFolder}`;
             
-            if (!seen.has(href)) {
-                seen.add(href);
+            if (!seen.has(id)) {
+                seen.add(id);
                 const numMatch = name.match(/(\d+(?:\.\d+)?)/);
                 const number = numMatch ? parseFloat(numMatch[1]) : chapters.length + 1;
-                chapters.push({ href, title: name, number });
+                chapters.push({ id: id, title: name, chapter: number, scanlation_group: "MangaWorld" });
             }
         }
-
-        if (chapters.length === 0) {
-            return JSON.stringify([{ href: url, title: "Errore: nessun capitolo trovato nell'HTML.", number: 1 }]);
-        }
-
-        chapters.sort(function(a, b) { return a.number - b.number; });
-        return JSON.stringify(chapters);
         
+        chapters.sort(function(a, b) { return a.chapter - b.chapter; });
+
+        // Il contratto Kanzen aspetta un dizionario di lingue, poi un array di Tuple [numero, [varianti]]
+        const results = chapters.map(function(ch) {
+            return [
+                String(ch.chapter),
+                [ch]
+            ];
+        });
+
+        return { it: results };
     } catch (e) {
-        return JSON.stringify([{ href: url, title: "ECCEZIONE JS: " + e.message, number: 1 }]);
+        return { it: [] };
     }
 }
 
-// TRAPPOLA PER LA CACHE: Se l'app crede di essere un video player, chiamerà extractEpisodes!
-async function extractEpisodes(url) {
-    return JSON.stringify([{
-        id: "error_cache",
-        title: "❌ ERRORE: CACHE DELL'APP. Rimuovi modulo e usa il nuovo link mangita.json!",
-        number: 1
-    }]);
-}
-
-async function extractStreamUrl(url) {
-    return "error";
-}
-// FINE TRAPPOLA
-
-async function extractText(url) {
+async function extractImages(url) {
     try {
         const response = await soraFetch(url);
         const html = await response.text();
-
+        
         const chapIdMatch = html.match(/"_id":"([a-f0-9]{24})"/);
         if (chapIdMatch) {
             const chapId = chapIdMatch[1];
@@ -115,12 +103,12 @@ async function extractText(url) {
                 try {
                     const pages = JSON.parse('[' + pagesStr[1] + ']');
                     const base = `https://cdn.mangaworld.mx/chapters/${chapId}/`;
-                    return pages.map(function(p) { return "<img src='" + base + p + "' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>"; }).join('<br/>');
+                    // Restituisce un Array di stringhe url dirette
+                    return pages.map(function(p) { return base + p; });
                 } catch (_) {}
             }
         }
-
-        // Fallback
+        
         const imgIdx = html.indexOf('cdn.mangaworld.mx/chapters/');
         if (imgIdx !== -1) {
             const imgSlice = html.slice(Math.max(0, html.lastIndexOf('<img', imgIdx)), imgIdx + 300);
@@ -131,14 +119,14 @@ async function extractText(url) {
                 if (pSlice) {
                     try {
                         const pages = JSON.parse('[' + pSlice[1] + ']');
-                        return pages.map(function(p) { return "<img src='" + base + p + "' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>"; }).join('<br/>');
+                        return pages.map(function(p) { return base + p; });
                     } catch (_) {}
                 }
             }
         }
-        return 'Errore estrazione contenuto.';
+        return [];
     } catch (e) {
-        return 'Errore estrazione contenuto.';
+        return [];
     }
 }
 
@@ -148,34 +136,6 @@ async function soraFetch(url, options = { headers: {}, method: 'GET', body: null
         if (response && response.status !== undefined) return response;
         throw new Error('fetchv2 returned error format');
     } catch (e) {
-        try {
-            return await fetch(url, options);
-        } catch (error) {
-            return null;
-        }
-    }
-}
-
-// NUOVO CONTRATTO MANGA
-async function extractImages(url) {
-    try {
-        const response = await soraFetch(url);
-        const html = await response.text();
-
-        const chapIdMatch = html.match(/"_id":"([a-f0-9]{24})"/);
-        if (chapIdMatch) {
-            const chapId = chapIdMatch[1];
-            const pagesStr = html.match(/"pages":\[([^\]]+)\]/);
-            if (pagesStr) {
-                try {
-                    const pages = JSON.parse('[' + pagesStr[1] + ']');
-                    const base = https://cdn.mangaworld.mx/chapters/ + chapId + /;
-                    return JSON.stringify(pages.map(p => base + p));
-                } catch (_) {}
-            }
-        }
-        return JSON.stringify([]);
-    } catch (e) {
-        return JSON.stringify([]);
+        try { return await fetch(url, options); } catch (error) { return null; }
     }
 }
