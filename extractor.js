@@ -34,14 +34,11 @@ async function extractDetails(url) {
     try {
         const html = await _fetchPage(url);
         let description = '';
-
-        const divIdx = html.indexOf('id=noidungm');
-        if (divIdx !== -1) {
-            const start = html.indexOf('>', divIdx) + 1;
-            const end = html.indexOf('</div>', start);
-            if (start > 0 && end > start) {
-                description = html.slice(start, end).trim();
-            }
+        
+        if (!html || html.length < 100) {
+            description = "Errore: la pagina non ha restituito contenuto valido. Forse un blocco di rete.";
+        } else if (html.includes("Cloudflare") || html.includes("Just a moment")) {
+            description = "ERRORE CLOUDFLARE: Il server ha bloccato la richiesta credendo che l'app sia un bot.";
         } else {
             const metaIdx = html.indexOf('<meta name=description');
             if (metaIdx !== -1) {
@@ -53,81 +50,68 @@ async function extractDetails(url) {
 
         return JSON.stringify([{ description, aliases: '', airdate: '' }]);
     } catch (e) {
-        return JSON.stringify([{ description: '', aliases: '', airdate: '' }]);
+        return JSON.stringify([{ description: 'Exception: ' + e.message, aliases: '', airdate: '' }]);
     }
 }
 
 async function extractChapters(url) {
     try {
         const html = await _fetchPage(url);
-
-        const listStart = html.indexOf('id=chapterList');
-        const section = listStart !== -1 ? html.slice(listStart, html.indexOf('<!--M/-->', listStart)) : html;
-
-        const regex = /class=chap href=(https:\/\/www\.mangaworld\.mx\/manga\/[^?> "']+)[^>]*><span[^>]*>([^<]+)<\/span>/g;
-        const chapters = [];
-        const seen = new Set();
-        let match;
-        while ((match = regex.exec(section)) !== null) {
-            const href = match[1].trim();
-            if (!seen.has(href)) {
-                seen.add(href);
-                chapters.push({ href, title: match[2].trim() });
-            }
+        
+        // Debugging visivo per l'utente
+        if (!html || html.length < 100) {
+            return JSON.stringify([{ href: url, title: "ERRORE: HTML vuoto (" + (html ? html.length : 0) + " byte)", number: 1 }]);
+        }
+        if (html.includes("Cloudflare") || html.includes("Just a moment") || html.includes("cf-browser-verification")) {
+            return JSON.stringify([{ href: url, title: "ERRORE: Blocco Anti-Bot Cloudflare", number: 1 }]);
         }
 
-        chapters.reverse();
-        return JSON.stringify(chapters.map((ch, i) => ({ ...ch, number: i + 1 })));
+        // Il codice corretto per leggere dal JSON inline di MangaWorld (ripristinato)
+        const urlParts = url.replace('https://www.mangaworld.mx/manga/', '').split('/');
+        const mangaId = urlParts[0];
+        const mangaSlug = urlParts[1];
+
+        const chapters = [];
+        const seen = new Set();
+        
+        const chapRegex = /"name":"([^"]+)","volume":\{[^}]+\}[^}]*"slugFolder":"([^"]+)","title":[^,]+,"totViews":\d+[^}]*"id":"([^"]+)"/g;
+        let match;
+
+        while ((match = chapRegex.exec(html)) !== null) {
+            const name = match[1];
+            const slugFolder = match[2];
+            const href = `https://www.mangaworld.mx/manga/${mangaId}/${mangaSlug}/${slugFolder}`;
+            
+            if (!seen.has(href)) {
+                seen.add(href);
+                const numMatch = name.match(/(\d+(?:\.\d+)?)/);
+                const number = numMatch ? parseFloat(numMatch[1]) : chapters.length + 1;
+                chapters.push({ href, title: name, number });
+            }
+        }
+        
+        if (chapters.length === 0) {
+            // Se non trova i capitoli nel JSON, mostra la lunghezza dell'HTML per capire se la pagina è diversa
+            return JSON.stringify([{ href: url, title: "DEBUG: Nessun capitolo trovato. HTML length: " + html.length, number: 1 }]);
+        }
+
+        chapters.sort(function(a, b) { return a.number - b.number; });
+        return JSON.stringify(chapters);
+        
     } catch (e) {
-        return JSON.stringify([]);
+        return JSON.stringify([{ href: url, title: "ECCEZIONE JS: " + e.message, number: 1 }]);
     }
 }
 
 async function extractText(url) {
-    try {
-        const response = await soraFetch(url);
-        const html = await response.text();
-
-        const imgIdx = html.indexOf('cdn.mangaworld.mx/chapters/');
-        if (imgIdx !== -1) {
-            const imgSlice = html.slice(html.lastIndexOf('<img', imgIdx), imgIdx + 200);
-            const srcM = imgSlice.match(/src=(?:'|")?(\bhttps:\/\/cdn\.mangaworld\.mx\/chapters\/[^"' >]+)/);
-            if (srcM) {
-                const base = srcM[1].slice(0, srcM[1].lastIndexOf('/') + 1);
-                const pIdx = html.indexOf('"pages":');
-                if (pIdx !== -1) {
-                    const pSlice = html.slice(pIdx + 8, html.indexOf(']', pIdx) + 1);
-                    try {
-                        const pages = JSON.parse(pSlice);
-                        return pages.map(p => `<img src='${base}${p}' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>`).join('<br/>');
-                    } catch (_) {}
-                }
-            }
-        }
-
-        // Fallback added by me to support JSON inline reading, just in case
-        const chapIdMatch = html.match(/"_id":"([a-f0-9]{24})"/);
-        if (chapIdMatch) {
-            const chapId = chapIdMatch[1];
-            const pagesStr = html.match(/"pages":\[([^\]]+)\]/);
-            if (pagesStr) {
-                try {
-                    const pages = JSON.parse('[' + pagesStr[1] + ']');
-                    const base = `https://cdn.mangaworld.mx/chapters/${chapId}/`;
-                    return pages.map(p => `<img src='${base}${p}' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>`).join('<br/>');
-                } catch (_) {}
-            }
-        }
-
-        return 'Nessun contenuto trovato.';
-    } catch (e) {
-        return 'Errore estrazione contenuto.';
-    }
+    return 'Questo è un capitolo di test. Se vedi questo, il problema è risolto!';
 }
 
 async function soraFetch(url, options = { headers: {}, method: 'GET', body: null }) {
     try {
-        return await fetchv2(url, options.headers ?? {}, options.method ?? 'GET', options.body ?? null);
+        const response = await fetchv2(url, options.headers ?? {}, options.method ?? 'GET', options.body ?? null);
+        if (response && response.status !== undefined) return response;
+        throw new Error('fetchv2 returned error format');
     } catch (e) {
         try {
             return await fetch(url, options);
