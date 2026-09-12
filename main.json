@@ -12,7 +12,7 @@
   "quality": "HD",
   "baseUrl": "https://www.mangaworld.mx/",
   "searchBaseUrl": "https://www.mangaworld.mx/archive?keyword=%s",
-  "scriptUrl": "https://raw.githubusercontent.com/Karelg86/Mang_ITA/main/extractor.js",
+  "scriptUrl": "https://raw.githubusercontent.com/Karelg86/Mang_ITA/master/extractor.js",
   "type": "novels",
   "asyncJS": true,
   "novel": true,
