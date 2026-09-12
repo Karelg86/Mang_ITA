@@ -1,0 +1,23 @@
+{
+  "sourceName": "MangaWorld IT",
+  "iconUrl": "https://www.mangaworld.mx/public/assets/seo/android-icon-192x192.png",
+  "author": {
+    "name": "Karelg86",
+    "icon": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRQPQ1qIiALbM3xDWGsuJzu6ItaQGwb9ICRRw&s",
+    "url": "https://github.com/Karelg86"
+  },
+  "version": "1.0.0",
+  "language": "Italian",
+  "streamType": "novels",
+  "quality": "HD",
+  "baseUrl": "https://www.mangaworld.mx/",
+  "searchBaseUrl": "https://www.mangaworld.mx/archive?keyword=%s",
+  "scriptUrl": "https://raw.githubusercontent.com/Karelg86/Mang_ITA/main/extractor.js",
+  "type": "novels",
+  "asyncJS": true,
+  "novel": true,
+  "downloadSupport": false,
+  "supportsMojuru": false,
+  "supportsSora": true,
+  "supportsLuna": true
+}
