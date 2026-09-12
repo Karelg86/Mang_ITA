@@ -35,11 +35,20 @@ async function extractDetails(url) {
         const html = await _fetchPage(url);
         let description = '';
 
-        const metaIdx = html.indexOf('<meta name=description');
-        if (metaIdx !== -1) {
-            const slice = html.slice(metaIdx, metaIdx + 400);
-            const m = slice.match(/content="([^"]+)"/);
-            if (m) description = m[1].replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
+        const divIdx = html.indexOf('id=noidungm');
+        if (divIdx !== -1) {
+            const start = html.indexOf('>', divIdx) + 1;
+            const end = html.indexOf('</div>', start);
+            if (start > 0 && end > start) {
+                description = html.slice(start, end).trim();
+            }
+        } else {
+            const metaIdx = html.indexOf('<meta name=description');
+            if (metaIdx !== -1) {
+                const slice = html.slice(metaIdx, metaIdx + 400);
+                const m = slice.match(/content="([^"]+)"/);
+                if (m) description = m[1].replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
+            }
         }
 
         return JSON.stringify([{ description, aliases: '', airdate: '' }]);
@@ -52,41 +61,23 @@ async function extractChapters(url) {
     try {
         const html = await _fetchPage(url);
 
-        // I capitoli sono nel JSON inline della pagina.
-        // Struttura: {"name":"Capitolo 01","slugFolder":"capitolo-01","manga":"ID","id":"CHAPID","pages":["1.jpg",...]}
-        // URL capitolo: https://www.mangaworld.mx/manga/{mangaId}/{mangaSlug}/{slugFolder}
+        const listStart = html.indexOf('id=chapterList');
+        const section = listStart !== -1 ? html.slice(listStart, html.indexOf('<!--M/-->', listStart)) : html;
 
-        // Estrai l'ID e slug del manga dall'URL passato: /manga/{id}/{slug}
-        const urlParts = url.replace('https://www.mangaworld.mx/manga/', '').split('/');
-        const mangaId = urlParts[0];
-        const mangaSlug = urlParts[1];
-
-        // Trova il blocco JSON che contiene i capitoli cercando "slugFolder"
+        const regex = /class=chap href=(https:\/\/www\.mangaworld\.mx\/manga\/[^?> "']+)[^>]*><span[^>]*>([^<]+)<\/span>/g;
         const chapters = [];
         const seen = new Set();
-
-        // Regex per ogni capitolo nel JSON inline
-        const chapRegex = /"name":"([^"]+)","volume":\{[^}]+\}[^}]*"slugFolder":"([^"]+)","title":[^,]+,"totViews":\d+[^}]*"id":"([^"]+)"/g;
         let match;
-
-        while ((match = chapRegex.exec(html)) !== null) {
-            const name = match[1];
-            const slugFolder = match[2];
-            const chapId = match[3];
-            const href = `https://www.mangaworld.mx/manga/${mangaId}/${mangaSlug}/${slugFolder}`;
-
+        while ((match = regex.exec(section)) !== null) {
+            const href = match[1].trim();
             if (!seen.has(href)) {
                 seen.add(href);
-                // Estrai numero dal nome: "Capitolo 01" → 1
-                const numMatch = name.match(/(\d+(?:\.\d+)?)/);
-                const number = numMatch ? parseFloat(numMatch[1]) : chapters.length + 1;
-                chapters.push({ href, title: name, number });
+                chapters.push({ href, title: match[2].trim() });
             }
         }
 
-        // Ordine crescente (dal cap 1 in poi)
-        chapters.sort(function(a, b) { return a.number - b.number; });
-        return JSON.stringify(chapters);
+        chapters.reverse();
+        return JSON.stringify(chapters.map((ch, i) => ({ ...ch, number: i + 1 })));
     } catch (e) {
         return JSON.stringify([]);
     }
@@ -97,45 +88,34 @@ async function extractText(url) {
         const response = await soraFetch(url);
         const html = await response.text();
 
-        // Le pagine sono nel JSON inline: "pages":["1.jpg","2.jpg",...]
-        // Il base URL CDN è: https://cdn.mangaworld.mx/chapters/{chapterId}/
-        // L'ID del capitolo si trova nel JSON inline della pagina del capitolo
+        const imgIdx = html.indexOf('cdn.mangaworld.mx/chapters/');
+        if (imgIdx !== -1) {
+            const imgSlice = html.slice(html.lastIndexOf('<img', imgIdx), imgIdx + 200);
+            const srcM = imgSlice.match(/src=(?:'|")?(\bhttps:\/\/cdn\.mangaworld\.mx\/chapters\/[^"' >]+)/);
+            if (srcM) {
+                const base = srcM[1].slice(0, srcM[1].lastIndexOf('/') + 1);
+                const pIdx = html.indexOf('"pages":');
+                if (pIdx !== -1) {
+                    const pSlice = html.slice(pIdx + 8, html.indexOf(']', pIdx) + 1);
+                    try {
+                        const pages = JSON.parse(pSlice);
+                        return pages.map(p => `<img src='${base}${p}' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>`).join('<br/>');
+                    } catch (_) {}
+                }
+            }
+        }
 
-        // Cerca il chapterId dalla pagina
+        // Fallback added by me to support JSON inline reading, just in case
         const chapIdMatch = html.match(/"_id":"([a-f0-9]{24})"/);
-        const pagesMatch = html.match(/"pages":\["([^"]+)"(?:,"([^"]+)")*\]/);
-
-        if (chapIdMatch && pagesMatch) {
+        if (chapIdMatch) {
             const chapId = chapIdMatch[1];
-            // Estrai tutte le pagine dall'array JSON
             const pagesStr = html.match(/"pages":\[([^\]]+)\]/);
             if (pagesStr) {
                 try {
                     const pages = JSON.parse('[' + pagesStr[1] + ']');
                     const base = `https://cdn.mangaworld.mx/chapters/${chapId}/`;
-                    return pages.map(function(p) {
-                        return "<img src='" + base + p + "' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>";
-                    }).join('<br/>');
+                    return pages.map(p => `<img src='${base}${p}' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>`).join('<br/>');
                 } catch (_) {}
-            }
-        }
-
-        // Fallback: cerca direttamente img dal CDN
-        const imgIdx = html.indexOf('cdn.mangaworld.mx/chapters/');
-        if (imgIdx !== -1) {
-            const imgSlice = html.slice(Math.max(0, html.lastIndexOf('<img', imgIdx)), imgIdx + 300);
-            const srcM = imgSlice.match(/src=(?:'|")?(\bhttps:\/\/cdn\.mangaworld\.mx\/chapters\/[^"' >]+)/);
-            if (srcM) {
-                const base = srcM[1].slice(0, srcM[1].lastIndexOf('/') + 1);
-                const pSlice = html.match(/"pages":\[([^\]]+)\]/);
-                if (pSlice) {
-                    try {
-                        const pages = JSON.parse('[' + pSlice[1] + ']');
-                        return pages.map(function(p) {
-                            return "<img src='" + base + p + "' style='max-width:100%;height:auto;display:block;margin:0 auto;'/>";
-                        }).join('<br/>');
-                    } catch (_) {}
-                }
             }
         }
 
