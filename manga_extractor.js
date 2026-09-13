@@ -170,7 +170,6 @@ async function extractImages(chapterId) {
         return [];
     }
 }
-}
 
 // ==========================================
 // SORA FETCH
