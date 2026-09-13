@@ -1,0 +1,22 @@
+const fs = require('fs');
+fetch('https://www.mangaworld.mx/manga/1716/one-piece')
+    .then(r => r.text())
+    .then(html => {
+        const regex = /"_id":"([a-f0-9]{24})","pages":\[[^\]]*\].*?"name":"(Capitolo [^"]+|[0-9]+(?:\.[0-9]+)?)"/g;
+        let match;
+        const chapters = [];
+        const seen = new Set();
+        while ((match = regex.exec(html)) !== null) {
+            const id = match[1];
+            const name = match[2];
+            if (!seen.has(id)) {
+                seen.add(id);
+                chapters.push({ id, name });
+            }
+        }
+        console.log("Found " + chapters.length + " chapters.");
+        if (chapters.length > 0) {
+            console.log(chapters[0]);
+            console.log(chapters[chapters.length - 1]);
+        }
+    });

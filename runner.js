@@ -104,68 +104,24 @@ async function extractChapters(urlOrId) {
 
         const chapters = [];
         const seen = new Set();
-        let jsonStr = null;
-        
-        const match5 = html.match(/\$MC=\(window\.\$MC\|\|\[\]\)\.concat\((.*?)\)<\/script>/);
-        if (match5) {
-            jsonStr = match5[1];
-        } else {
-            const match4 = html.match(/\$_mod\.ready\([^,]+,\s*(\{.*?\})\s*\);?<\/script>/);
-            if (match4) {
-                jsonStr = match4[1];
-            }
-        }
+        const chapRegex = /"_id":"([a-f0-9]{24})","manga":"[a-f0-9]{24}","name":"([^"]+)","volume":\{[^}]*"slugFolder":"([^"]+)"[^}]*\}[^}]*"pages":\[([^\]]*)\][^}]*"slugFolder":"([^"]+)"/g;
+        let match;
 
-        if (jsonStr) {
-            try {
-                const data = JSON.parse(jsonStr);
-                
-                function findChapters(obj) {
-                    if (Array.isArray(obj)) {
-                        obj.forEach(findChapters);
-                    } else if (obj !== null && typeof obj === 'object') {
-                        if (obj._id && obj.name && Array.isArray(obj.pages)) {
-                            if (!seen.has(obj._id) && !obj.name.toLowerCase().includes('volume')) {
-                                seen.add(obj._id);
-                                const numMatch = obj.name.match(/(\d+(?:\.\d+)?)/);
-                                const number = numMatch ? parseFloat(numMatch[1]) : chapters.length + 1;
-                                chapters.push({
-                                    id: JSON.stringify({ m: mangaId, s: mangaSlug, c: obj._id }),
-                                    title: obj.name,
-                                    chapter: number,
-                                    scanlation_group: "MangaWorld"
-                                });
-                            }
-                        }
-                        Object.values(obj).forEach(findChapters);
-                    }
-                }
-                
-                findChapters(data);
-                
-            } catch (e) {
-                console.log('[MangaWorldIT] JSON parse failed: ' + e.message);
-            }
-        }
+        while ((match = chapRegex.exec(html)) !== null) {
+            const chapId = match[1];
+            const name = match[2];
+            if (!seen.has(chapId)) {
+                seen.add(chapId);
+                const numMatch = name.match(/(\d+(?:\.\d+)?)/);
+                const number = numMatch ? parseFloat(numMatch[1]) : chapters.length + 1;
 
-        // Se non troviamo capitoli con il JSON, fallback sulla vecchia regex robusta che non dipende dall'ordine
-        if (chapters.length === 0) {
-            const chapRegex = /"_id":"([a-f0-9]{24})","pages":\[[^\]]*\].*?"name":"(Capitolo [^"]+|[0-9]+(?:\.[0-9]+)?)"/g;
-            let match;
-            while ((match = chapRegex.exec(html)) !== null) {
-                const chapId = match[1];
-                const name = match[2];
-                if (!seen.has(chapId)) {
-                    seen.add(chapId);
-                    const numMatch = name.match(/(\d+(?:\.\d+)?)/);
-                    const number = numMatch ? parseFloat(numMatch[1]) : chapters.length + 1;
-                    chapters.push({
-                        id: JSON.stringify({ m: mangaId, s: mangaSlug, c: chapId }),
-                        title: name,
-                        chapter: number,
-                        scanlation_group: "MangaWorld"
-                    });
-                }
+                chapters.push({
+                    // ID CORTISSIMO (sotto i 100 char) per evitare il troncamento in SQLite di Shirox
+                    id: JSON.stringify({ m: mangaId, s: mangaSlug, c: chapId }),
+                    title: name,
+                    chapter: number,
+                    scanlation_group: "MangaWorld"
+                });
             }
         }
 
@@ -186,32 +142,31 @@ async function extractChapters(urlOrId) {
 async function extractImages(chapterId) {
     try {
         const data = JSON.parse(chapterId);
-        const readerUrl = "https://www.mangaworld.mx/manga/" + data.m + "/" + data.s + "/read/" + data.c + "/1";
-        const res = await soraFetch(readerUrl, { headers: HEADERS });
+        // data.m = mangaId, data.s = mangaSlug, data.c = chapId
+        const mangaUrl = "https://www.mangaworld.mx/manga/" + data.m + "/" + data.s;
+        
+        // Ricarichiamo la pagina principale del manga che contiene il JSON con le pages
+        const res = await soraFetch(mangaUrl, { headers: HEADERS });
         if (!res || typeof res.text !== "function") return [];
         const html = await res.text();
+        if (!html) return [];
 
-        // 1. Trova l'URL della prima immagine direttamente dall'HTML del reader
-        const imgMatch = html.match(/id=page[^>]*>[\s\S]*?<img[^>]*src=["']?([^"'\s>]+)/);
-        if (!imgMatch) return [];
-        const firstUrl = imgMatch[1];
-        const base = firstUrl.substring(0, firstUrl.lastIndexOf('/') + 1);
-
-        // 2. Trova l'elenco delle pagine (i nomi dei file) dal JSON della pagina
+        // Cerchiamo esattamente il JSON del capitolo richiesto
         const regexStr = '"_id":"' + data.c + '"[^}]+?"pages":\\[([^\\]]*)\\]';
         const chapRegex = new RegExp(regexStr);
         const match = html.match(chapRegex);
 
         if (match && match[1]) {
             const pages = JSON.parse('[' + match[1] + ']');
+            const base = "https://cdn.mangaworld.mx/chapters/" + data.c + "/";
             const imageUrls = pages.map(function(p) { return base + p; });
-            console.log('[MangaWorldIT][Images] ' + imageUrls.length + ' pagine (Base: ' + base + ')');
+            console.log('[MangaWorldIT][Images] ' + imageUrls.length + ' pagine trovate');
             return imageUrls;
         }
         
         return [];
     } catch (e) {
-        console.log('[MangaWorldIT][Images] error: ' + e);
+        console.log('[MangaWorldIT][Images] ' + e);
         return [];
     }
 }
@@ -220,20 +175,4 @@ async function extractImages(chapterId) {
 // SORA FETCH
 // ==========================================
 
-async function soraFetch(url, options = { headers: {}, method: 'GET', body: null }) {
-    const headers = options.headers || {};
-    if (!headers["User-Agent"]) {
-        headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-    }
-    try {
-        if (typeof fetchv2 !== 'undefined') {
-            return await fetchv2(url, headers, options.method ?? 'GET', options.body ?? null, true, 'utf-8');
-        }
-        return await fetch(url, options);
-    } catch (e) {
-        try { return await fetch(url, options); } catch (error) { return null; }
-    }
-}
-
-
-
+[object Promise][object Promise]
