@@ -143,7 +143,7 @@ async function extractImages(chapterId) {
     try {
         const data = JSON.parse(chapterId);
         // data.m = mangaId, data.s = mangaSlug, data.c = chapId
-        const mangaUrl = https://www.mangaworld.mx/manga/ + data.m + / + data.s;
+        const mangaUrl = "https://www.mangaworld.mx/manga/" + data.m + "/" + data.s;
         
         // Ricarichiamo la pagina principale del manga che contiene il JSON con le pages
         const res = await soraFetch(mangaUrl, { headers: HEADERS });
@@ -152,13 +152,13 @@ async function extractImages(chapterId) {
         if (!html) return [];
 
         // Cerchiamo esattamente il JSON del capitolo richiesto
-        const regexStr = "\_id":" + data.c + "[^}]+?"pages":\\[([^\\]]*)\\];
+        const regexStr = '"_id":"' + data.c + '"[^}]+?"pages":\\[([^\\]]*)\\]';
         const chapRegex = new RegExp(regexStr);
         const match = html.match(chapRegex);
 
         if (match && match[1]) {
             const pages = JSON.parse('[' + match[1] + ']');
-            const base = https://cdn.mangaworld.mx/chapters/ + data.c + /;
+            const base = "https://cdn.mangaworld.mx/chapters/" + data.c + "/";
             const imageUrls = pages.map(function(p) { return base + p; });
             console.log('[MangaWorldIT][Images] ' + imageUrls.length + ' pagine trovate');
             return imageUrls;
