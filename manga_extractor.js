@@ -91,63 +91,49 @@ async function extractDetails(id) {
 // ==========================================
 
 async function extractChapters(urlOrId) {
-    console.log(`[MangaWorldIT][Chapters] ${urlOrId}`);
+    console.log([MangaWorldIT][Chapters]  + urlOrId);
     try {
         const res = await soraFetch(urlOrId, { headers: HEADERS });
         if (!res || typeof res.text !== "function") return {};
         const html = await res.text();
         if (!html) return {};
 
+        const urlParts = urlOrId.replace('https://www.mangaworld.mx/manga/', '').split('/');
+        const mangaId = urlParts[0];
+        const mangaSlug = urlParts[1];
+
         const chapters = [];
         const seen = new Set();
-
-        // Ogni capitolo nel JSON inline ha: _id, name, pages[], slugFolder, volume.slugFolder
-        // Formato: {"_id":"xxx","manga":"yyy","name":"Capitolo 01","volume":{...},"pages":["1.jpg",...],"slugFolder":"capitolo-01",...,"id":"xxx"}
         const chapRegex = /"_id":"([a-f0-9]{24})","manga":"[a-f0-9]{24}","name":"([^"]+)","volume":\{[^}]*"slugFolder":"([^"]+)"[^}]*\}[^}]*"pages":\[([^\]]*)\][^}]*"slugFolder":"([^"]+)"/g;
         let match;
 
         while ((match = chapRegex.exec(html)) !== null) {
             const chapId = match[1];
             const name = match[2];
-            const volSlug = match[3];
-            const pagesRaw = match[4];
-            const chapSlug = match[5];
-
             if (!seen.has(chapId)) {
                 seen.add(chapId);
                 const numMatch = name.match(/(\d+(?:\.\d+)?)/);
                 const number = numMatch ? parseFloat(numMatch[1]) : chapters.length + 1;
 
-                // Costruisco le pagine come array di URL completi
-                try {
-                    const pages = JSON.parse('[' + pagesRaw + ']');
-                    const base = `https://cdn.mangaworld.mx/chapters/${chapId}/`;
-                    const imageUrls = pages.map(function(p) { return base + p; });
-
-                    chapters.push({
-                        id: JSON.stringify({ images: imageUrls }),
-                        title: name,
-                        chapter: number,
-                        scanlation_group: "MangaWorld"
-                    });
-                } catch (_) {
-                    console.log(`[MangaWorldIT][Chapters] skip ${name}: parse error`);
-                }
+                chapters.push({
+                    // ID CORTISSIMO (sotto i 100 char) per evitare il troncamento in SQLite di Shirox
+                    id: JSON.stringify({ m: mangaId, s: mangaSlug, c: chapId }),
+                    title: name,
+                    chapter: number,
+                    scanlation_group: "MangaWorld"
+                });
             }
         }
 
         chapters.sort(function(a, b) { return a.chapter - b.chapter; });
-
-        const entries = chapters.map(function(ch) {
-            return [String(ch.chapter), [ch]];
-        });
-
-        console.log(`[MangaWorldIT][Chapters] ${entries.length} capitoli trovati`);
+        const entries = chapters.map(function(ch) { return [String(ch.chapter), [ch]]; });
+        console.log([MangaWorldIT][Chapters]  + entries.length +  capitoli trovati);
         return { "Italiano": entries };
     } catch (e) {
-        console.log(`[MangaWorldIT][Chapters] ${e}`);
+        console.log([MangaWorldIT][Chapters]  + e);
         return {};
     }
+}
 }
 
 // ==========================================
@@ -158,12 +144,34 @@ async function extractChapters(urlOrId) {
 async function extractImages(chapterId) {
     try {
         const data = JSON.parse(chapterId);
-        console.log(`[MangaWorldIT][Images] ${data.images.length} pagine`);
-        return data.images;
+        // data.m = mangaId, data.s = mangaSlug, data.c = chapId
+        const mangaUrl = https://www.mangaworld.mx/manga/ + data.m + / + data.s;
+        
+        // Ricarichiamo la pagina principale del manga che contiene il JSON con le pages
+        const res = await soraFetch(mangaUrl, { headers: HEADERS });
+        if (!res || typeof res.text !== "function") return [];
+        const html = await res.text();
+        if (!html) return [];
+
+        // Cerchiamo esattamente il JSON del capitolo richiesto
+        const regexStr = "\_id":" + data.c + "[^}]+?"pages":\\[([^\\]]*)\\];
+        const chapRegex = new RegExp(regexStr);
+        const match = html.match(chapRegex);
+
+        if (match && match[1]) {
+            const pages = JSON.parse('[' + match[1] + ']');
+            const base = https://cdn.mangaworld.mx/chapters/ + data.c + /;
+            const imageUrls = pages.map(function(p) { return base + p; });
+            console.log([MangaWorldIT][Images]  + imageUrls.length +  pagine trovate);
+            return imageUrls;
+        }
+        
+        return [];
     } catch (e) {
-        console.log(`[MangaWorldIT][Images] ${e}`);
+        console.log([MangaWorldIT][Images]  + e);
         return [];
     }
+}
 }
 
 // ==========================================
@@ -184,3 +192,4 @@ async function soraFetch(url, options = { headers: {}, method: 'GET', body: null
         try { return await fetch(url, options); } catch (error) { return null; }
     }
 }
+
