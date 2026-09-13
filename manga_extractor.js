@@ -134,8 +134,6 @@ async function extractChapters(urlOrId) {
         return {};
     }
 }
-}
-
 // ==========================================
 // 4. IMMAGINI DI UN CAPITOLO -> [ "url", ... ]
 //    Le immagini sono già nell'ID del capitolo!
