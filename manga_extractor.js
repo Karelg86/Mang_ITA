@@ -142,31 +142,32 @@ async function extractChapters(urlOrId) {
 async function extractImages(chapterId) {
     try {
         const data = JSON.parse(chapterId);
-        // data.m = mangaId, data.s = mangaSlug, data.c = chapId
-        const mangaUrl = "https://www.mangaworld.mx/manga/" + data.m + "/" + data.s;
-        
-        // Ricarichiamo la pagina principale del manga che contiene il JSON con le pages
-        const res = await soraFetch(mangaUrl, { headers: HEADERS });
+        const readerUrl = "https://www.mangaworld.mx/manga/" + data.m + "/" + data.s + "/read/" + data.c + "/1";
+        const res = await soraFetch(readerUrl, { headers: HEADERS });
         if (!res || typeof res.text !== "function") return [];
         const html = await res.text();
-        if (!html) return [];
 
-        // Cerchiamo esattamente il JSON del capitolo richiesto
+        // 1. Trova l'URL della prima immagine direttamente dall'HTML del reader
+        const imgMatch = html.match(/id=page[^>]*>[\s\S]*?<img[^>]*src=["']?([^"'\s>]+)/);
+        if (!imgMatch) return [];
+        const firstUrl = imgMatch[1];
+        const base = firstUrl.substring(0, firstUrl.lastIndexOf('/') + 1);
+
+        // 2. Trova l'elenco delle pagine (i nomi dei file) dal JSON della pagina
         const regexStr = '"_id":"' + data.c + '"[^}]+?"pages":\\[([^\\]]*)\\]';
         const chapRegex = new RegExp(regexStr);
         const match = html.match(chapRegex);
 
         if (match && match[1]) {
             const pages = JSON.parse('[' + match[1] + ']');
-            const base = "https://cdn.mangaworld.mx/chapters/" + data.c + "/";
             const imageUrls = pages.map(function(p) { return base + p; });
-            console.log('[MangaWorldIT][Images] ' + imageUrls.length + ' pagine trovate');
+            console.log('[MangaWorldIT][Images] ' + imageUrls.length + ' pagine (Base: ' + base + ')');
             return imageUrls;
         }
         
         return [];
     } catch (e) {
-        console.log('[MangaWorldIT][Images] ' + e);
+        console.log('[MangaWorldIT][Images] error: ' + e);
         return [];
     }
 }
@@ -189,5 +190,6 @@ async function soraFetch(url, options = { headers: {}, method: 'GET', body: null
         try { return await fetch(url, options); } catch (error) { return null; }
     }
 }
+
 
 
