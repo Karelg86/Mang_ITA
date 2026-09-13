@@ -91,7 +91,7 @@ async function extractDetails(id) {
 // ==========================================
 
 async function extractChapters(urlOrId) {
-    console.log([MangaWorldIT][Chapters]  + urlOrId);
+    console.log('[MangaWorldIT][Chapters] ' + urlOrId);
     try {
         const res = await soraFetch(urlOrId, { headers: HEADERS });
         if (!res || typeof res.text !== "function") return {};
@@ -127,10 +127,10 @@ async function extractChapters(urlOrId) {
 
         chapters.sort(function(a, b) { return a.chapter - b.chapter; });
         const entries = chapters.map(function(ch) { return [String(ch.chapter), [ch]]; });
-        console.log([MangaWorldIT][Chapters]  + entries.length +  capitoli trovati);
+        console.log('[MangaWorldIT][Chapters] ' + entries.length + ' capitoli trovati');
         return { "Italiano": entries };
     } catch (e) {
-        console.log([MangaWorldIT][Chapters]  + e);
+        console.log('[MangaWorldIT][Chapters] ' + e);
         return {};
     }
 }
@@ -162,13 +162,13 @@ async function extractImages(chapterId) {
             const pages = JSON.parse('[' + match[1] + ']');
             const base = https://cdn.mangaworld.mx/chapters/ + data.c + /;
             const imageUrls = pages.map(function(p) { return base + p; });
-            console.log([MangaWorldIT][Images]  + imageUrls.length +  pagine trovate);
+            console.log('[MangaWorldIT][Images] ' + imageUrls.length + ' pagine trovate');
             return imageUrls;
         }
         
         return [];
     } catch (e) {
-        console.log([MangaWorldIT][Images]  + e);
+        console.log('[MangaWorldIT][Images] ' + e);
         return [];
     }
 }
@@ -192,4 +192,5 @@ async function soraFetch(url, options = { headers: {}, method: 'GET', body: null
         try { return await fetch(url, options); } catch (error) { return null; }
     }
 }
+
 
