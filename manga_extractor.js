@@ -22,32 +22,23 @@ async function searchResults(keyword, page) {
         const html = await res.text();
         if (!html) return [];
 
+        // Solo la colonna dei risultati: la sidebar ("Ultime aggiunte") ha card
+        // con lo stesso markup e finirebbe tra i risultati.
+        const sidebarIdx = html.indexOf('cate-title');
+        const body = sidebarIdx !== -1 ? html.slice(0, sidebarIdx) : html;
+
         const results = [];
-        const regex = /href=(https:\/\/www\.mangaworld\.mx\/manga\/[^ \n>]+) title="([^"]+)"[^>]*><img src=([^\n >]+)/g;
+        // L'HTML è minificato: i titoli di una parola sono senza virgolette
+        // (title=Berserk), quelli di più parole sono quotati (title="One Piece").
+        const regex = /href=["']?(https?:\/\/[^"' >]+\/manga\/[^"' >]+)["']?\s+title=(?:"([^"]+)"|'([^']+)'|([^\s>]+))[^>]*>\s*<img[^>]*?\ssrc=["']?([^"' >]+)/g;
         let match;
         const seen = new Set();
-        const kw = keyword.toLowerCase().trim();
-        while ((match = regex.exec(html)) !== null) {
+        while ((match = regex.exec(body)) !== null) {
             const id = match[1].trim();
-            const title = match[2].trim();
+            const title = decodeEntities((match[2] || match[3] || match[4]).trim());
             if (!seen.has(id)) {
                 seen.add(id);
-                // Filtra: mostra solo titoli che contengono la keyword
-                if (title.toLowerCase().indexOf(kw) !== -1) {
-                    results.push({ id: id, title: title, imageURL: match[3].trim() });
-                }
-            }
-        }
-        // Se il filtro è troppo stretto e non trova nulla, mostra tutti
-        if (results.length === 0) {
-            seen.clear();
-            regex.lastIndex = 0;
-            while ((match = regex.exec(html)) !== null) {
-                const id = match[1].trim();
-                if (!seen.has(id)) {
-                    seen.add(id);
-                    results.push({ id: id, title: match[2].trim(), imageURL: match[3].trim() });
-                }
+                results.push({ id: id, title: title, imageURL: match[5].trim() });
             }
         }
         console.log(`[MangaWorldIT][Search] ${results.length} risultati`);
@@ -56,6 +47,14 @@ async function searchResults(keyword, page) {
         console.log(`[MangaWorldIT][Search] ${e}`);
         return [];
     }
+}
+
+function decodeEntities(str) {
+    return str
+        .replace(/&#(\d+);/g, function(_, n) { return String.fromCharCode(parseInt(n, 10)); })
+        .replace(/&#x([0-9a-f]+);/gi, function(_, n) { return String.fromCharCode(parseInt(n, 16)); })
+        .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 }
 
 // ==========================================
