@@ -30,7 +30,10 @@ Manuale di riferimento creato il 2026-09-12, aggiornato il 2026-10-13.
    - Nessun filtro per keyword: si restituisce quello che restituisce il sito (trova anche per titoli alternativi)
 2. **`extractDetails(url)`** — descrizione dal `<meta name=description>`
 3. **`extractChapters(url)`** — capitoli dal JSON `$MC=(window.$MC||[]).concat(...)` nella pagina manga; id capitolo = JSON `{m, s, c}`. Ritorna `{ "Italiano": [[num, [capitolo]]] }`
-4. **`extractImages(chapterId)`** — apre `/manga/{m}/{s}/read/{c}/1`, prende la base URL dalla prima immagine e i nomi file da `"pages":[...]`
+4. **`extractImages(chapterId)`** — apre `/manga/{m}/{s}/read/{c}/1?style=list` (tutte le pagine nell'HTML, anche per i manga in modalità PAGES)
+   - Prende solo le immagini sul CDN in `/chapters/` che contengono l'id del capitolo (mai logo/icone su `www.mangaworld.mx/public/...`)
+   - Se nell'HTML ci sono meno immagini delle pagine, completa con i nomi file da `pages` letti dal JSON `$MC`
+   - ⚠️ Nei capitoli vecchi l'oggetto JSON ha `"manga":{...}` annidato **prima** di `"pages"`: va letto come JSON, non con una regex
 
 ### Come Shirox esegue il modulo
 - `soraFetch` è definito nel modulo e chiama `fetchv2` di Shirox, che restituisce una risposta con `.text()` (non una stringa)
@@ -58,6 +61,7 @@ Quando il dominio di MangaWorld cambia (es. da `.mx` a `.new`):
 
 ## 📜 Storico
 
+- **1.0.2 (2026-10-13)** — Fix pagine: i capitoli con JSON "vecchio stile" (es. Overgeared cap. 00–11) davano 0 pagine; lettura pagine da `?style=list` e dal JSON `$MC`; icona modulo corretta (`/favicon.ico` dava 404)
 - **1.0.1 (2026-10-13)** — Fix ricerca: titoli di una parola (Berserk, Naruto, Overgeared) non venivano trovati; rimosso filtro keyword e fallback che mostrava le "Ultime aggiunte"; decodifica entità HTML nei titoli
 
 **Dominio corrente configurato nei file:** `www.mangaworld.mx`

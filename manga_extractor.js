@@ -185,34 +185,52 @@ async function extractChapters(urlOrId) {
 async function extractImages(chapterId) {
     try {
         const data = JSON.parse(chapterId);
-        const readerUrl = "https://www.mangaworld.mx/manga/" + data.m + "/" + data.s + "/read/" + data.c + "/1";
+        // style=list: tutte le pagine nell'HTML, sia per i manga in modalità LIST che PAGES
+        const readerUrl = BASE_URL + "/manga/" + data.m + "/" + data.s + "/read/" + data.c + "/1?style=list";
         const res = await soraFetch(readerUrl, { headers: HEADERS });
         if (!res || typeof res.text !== "function") return [];
         const html = await res.text();
+        if (!html) return [];
 
-        // 1. Trova l'URL della prima immagine direttamente dall'HTML del reader
-        const imgMatch = html.match(/id=page[^>]*>[\s\S]*?<img[^>]*src=["']?([^"'\s>]+)/);
-        if (!imgMatch) return [];
-        const firstUrl = imgMatch[1];
-        const base = firstUrl.substring(0, firstUrl.lastIndexOf('/') + 1);
+        // 1. Immagini del capitolo sul CDN: solo src in /chapters/ con l'id del capitolo,
+        //    così logo e icone del sito (www.mangaworld.mx/public/...) non finiscono tra le pagine.
+        const shown = [];
+        const imgRegex = /<img[^>]+src=["']?(https?:\/\/[^"'\s>]+\/chapters\/[^"'\s>]+)/g;
+        let m;
+        while ((m = imgRegex.exec(html)) !== null) {
+            if (m[1].indexOf(data.c) !== -1 && shown.indexOf(m[1]) === -1) shown.push(m[1]);
+        }
 
-        // 2. Trova l'elenco delle pagine (i nomi dei file) dal JSON della pagina
-        const regexStr = '"_id":"' + data.c + '"[^}]+?"pages":\\[([^\\]]*)\\]';
-        const chapRegex = new RegExp(regexStr);
-        const match = html.match(chapRegex);
+        // 2. Nomi file dal JSON $MC: l'oggetto capitolo può avere "manga" annidato prima
+        //    di "pages" (capitoli vecchi), quindi si legge il JSON invece di una regex.
+        const pages = findChapterPages(html, data.c);
 
-        if (match && match[1]) {
-            const pages = JSON.parse('[' + match[1] + ']');
+        if (pages.length > shown.length && shown.length > 0) {
+            const base = shown[0].substring(0, shown[0].lastIndexOf('/') + 1);
             const imageUrls = pages.map(function(p) { return base + p; });
             console.log('[MangaWorldIT][Images] ' + imageUrls.length + ' pagine (Base: ' + base + ')');
             return imageUrls;
         }
-        
-        return [];
+        console.log('[MangaWorldIT][Images] ' + shown.length + ' pagine');
+        return shown;
     } catch (e) {
         console.log('[MangaWorldIT][Images] error: ' + e);
         return [];
     }
+}
+
+function findChapterPages(html, chapId) {
+    const mc = html.match(/\$MC=\(window\.\$MC\|\|\[\]\)\.concat\((.*?)\)<\/script>/);
+    if (!mc) return [];
+    let found = [];
+    function walk(obj) {
+        if (found.length || obj === null || typeof obj !== 'object') return;
+        if (Array.isArray(obj)) { obj.forEach(walk); return; }
+        if (obj._id === chapId && Array.isArray(obj.pages)) { found = obj.pages; return; }
+        Object.keys(obj).forEach(function(k) { walk(obj[k]); });
+    }
+    try { walk(JSON.parse(mc[1])); } catch (e) { console.log('[MangaWorldIT][Images] JSON: ' + e); }
+    return found;
 }
 
 // ==========================================
