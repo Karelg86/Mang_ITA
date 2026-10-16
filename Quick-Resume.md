@@ -1,12 +1,12 @@
 # 🔄 Quick-Resume: Modulo MangaWorld IT per Shirox
 
-Manuale di riferimento creato il 2026-09-12, aggiornato il 2026-10-13.
+Manuale di riferimento creato il 2026-09-12, aggiornato il 2026-10-16.
 
 ## 📦 Repository
 
 - **Repository GitHub:** `https://github.com/Karelg86/Mang_ITA` (branch `master`)
 - **URL modulo per Shirox (l'unico corretto):** `https://raw.githubusercontent.com/Karelg86/Mang_ITA/master/mangita_manga.json`
-- **Cartella locale:** `C:\Users\kelgazzar\Desktop\Nuova cartella (4)\Mang_ITA\` (clone git)
+- **Cartella locale:** `C:\Users\kelgazzar\Documents\00_Kappa\17_Repository\Repository_Kappa\Mang_ITA\` (clone git)
 
 ## 📄 File nel repository
 
@@ -35,6 +35,10 @@ Manuale di riferimento creato il 2026-09-12, aggiornato il 2026-10-13.
    - Se nell'HTML ci sono meno immagini delle pagine, completa con i nomi file da `pages` letti dal JSON `$MC`
    - ⚠️ Nei capitoli vecchi l'oggetto JSON ha `"manga":{...}` annidato **prima** di `"pages"`: va letto come JSON, non con una regex
 
+### Rete debole (`soraFetch`)
+- Ogni richiesta viene ritentata fino a **3 volte** (pausa 1 s, poi 2 s) se la rete fallisce o il server risponde 5xx/429/408; stop dopo ~50 s (Shirox concede 120 s a ogni funzione del modulo)
+- Le **immagini** le scarica Shirox (Kingfisher, timeout 15 s, nessun retry): il modulo non può intervenire. Se una pagina non carica: "Tap to retry" sulla pagina
+
 ### Come Shirox esegue il modulo
 - `soraFetch` è definito nel modulo e chiama `fetchv2` di Shirox, che restituisce una risposta con `.text()` (non una stringa)
 - Shirox ordina i capitoli in modo crescente da solo
@@ -61,6 +65,7 @@ Quando il dominio di MangaWorld cambia (es. da `.mx` a `.new`):
 
 ## 📜 Storico
 
+- **1.0.3 (2026-10-16)** — Retry delle richieste in `soraFetch` (rete 4G/E): prima un errore di rete dava subito "No pages found". Nota: le pagine MangaWorld pesano 0,5–6 MB (originali JPEG/PNG); su rete lenta il limite resta il timeout di 15 s di Shirox sulle immagini. Backup pre-modifica in `Repository_Kappa\_backup\2026-10-16_pre-retry\`
 - **1.0.2 (2026-10-13)** — Fix pagine: i capitoli con JSON "vecchio stile" (es. Overgeared cap. 00–11) davano 0 pagine; lettura pagine da `?style=list` e dal JSON `$MC`; icona modulo corretta (`/favicon.ico` dava 404)
 - **1.0.1 (2026-10-13)** — Fix ricerca: titoli di una parola (Berserk, Naruto, Overgeared) non venivano trovati; rimosso filtro keyword e fallback che mostrava le "Ultime aggiunte"; decodifica entità HTML nei titoli
 
